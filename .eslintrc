@@ -1,0 +1,44 @@
+{
+  "rules": {
+    "object-curly-spacing": [2, "always"],
+    "object-shorthand": [2, "never"],
+    "padded-blocks": [2, {"switches": "always", "classes": "never", "blocks": "never"} ],
+    "no-confusing-arrow": [2, {"allowParens": true } ],
+    "one-var": 0,
+    "quote-props": 0,
+    "arrow-body-style": 0,
+    "quotes": [2, "single", { "allowTemplateLiterals": true}],
+    "dot-location": [2, "property"],
+    "arrow-parens": 0,
+    "no-magic-numbers": [1, {"ignore": [1, 0 ] } ],
+    "object-property-newline": [2, {"allowMultiplePropertiesPerLine": true } ],
+    "object-curly-newline": 0,
+    "eol-last": 0,
+    "indent": [2, 2 ],
+    "sort-imports": 0,
+    "brace-style": [2, "stroustrup", {"allowSingleLine": true } ],
+    "no-ternary": 0,
+    "operator-linebreak": [2, "before", {"overrides": {"?": "after"} } ],
+    "max-len": [2, 120, { "ignoreComments": true } ],
+    "max-statements": [1, {"max": 12 } ],
+    "max-statements-per-line": [2, {"max": 2 } ],
+    "no-unused-vars": 1,
+    "no-inline-comments": 0,
+    "no-console": 0,
+    "no-warning-comments": 1,
+
+    "multiline-ternary": 0,
+  },
+  "extends": "eslint:all",
+  "parserOptions": {
+    "sourceType": "module",
+    "ecmaVersion": 6,
+    "ecmaFeatures": {
+      "jsx": true
+    }
+  },
+  "env": {
+    "node": true,
+    "es6": true
+  }
+}
