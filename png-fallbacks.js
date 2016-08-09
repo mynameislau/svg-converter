@@ -9,10 +9,8 @@ const through = require('through2');
 
 const app = express();
 
-app.use(express.static('./images'));
-
 const templateRead = new Promise((resolve, reject) => {
-  fs.readFile('./template.hbs', (err, data) => {
+  fs.readFile(`${__dirname}/template.hbs`, (err, data) => {
     if (err) { reject(err); }
     resolve(data.toString());
   });
@@ -26,18 +24,34 @@ const listening = new Promise((resolve, reject) => {
 })
 .catch(error => console.error(error));
 
-const captureImages = (imgName, port) => {
-  const nightmareInst = nightmare();
+const nightmareInst = nightmare();
 
-  return nightmareInst.goto(`http://localhost:${port}/${imgName}`)
+const nightmareWaitOver = Promise.all([listening, templateRead])
+.then(([listener]) => new Promise((resolve, reject) => {
+  const port = listener.address().port;
+
+  const wait = nightmareInst.goto(`http://localhost:${port}/`)
   .viewport(1000, 1000) // TODO
   .wait()
-  .evaluate(() => ({
-    width: window.innerWidth,
-    height: window.document.body.offsetHeight
-  }))
-  .then(({ width, height }) => {
-    const promise = nightmareInst // .viewport(width, height)
+  .then(() => {
+    resolve();
+  });
+}));
+
+const captureImages = (imgData) => {
+
+  return nightmareWaitOver.then(() => {
+
+    return nightmareInst.evaluate(browserDataIMG => {
+      const imgElement = window.document.querySelector('img');
+
+      imgElement.addEventListener('load', () => {
+        imgElement.setAttribute('data-loaded', true);
+      });
+
+      imgElement.setAttribute('src', `data:image/svg+xml;base64,${browserDataIMG}`);
+    }, imgData)
+    .wait('[data-loaded]')
     .evaluate(() => {
       const cumulativeOffset = element => {
         let top = 0;
@@ -59,7 +73,6 @@ const captureImages = (imgName, port) => {
       const offset = cumulativeOffset(imgElement);
 
       return {
-        src: imgElement.getAttribute('src'),
         size: {
           x: offset.left,
           y: offset.top,
@@ -68,20 +81,18 @@ const captureImages = (imgName, port) => {
         }
       };
     });
-
-    return promise;
   })
-  .then(image =>
-    nightmareInst.screenshot(image.size)
-  )
-  .catch(error => console.error(error));
+  .then(image => {
+    return nightmareInst.screenshot(image.size);
+  })
+  .catch(error => console.error('errororoo' + error));
 };
 
 const svgObjects = {};
 
 Promise.all([templateRead, listening])
 .then(([template]) => {
-  app.get('/:svg_name', (req, res) => {
+  app.get('/', (req, res) => {
     const reqName = req.params.svg_name;
     const svgData = svgObjects[reqName];
     const rendered = handlebars.compile(template)({
@@ -96,10 +107,8 @@ module.exports = () => {
   return through.obj((file, enc, end) => {
     if (file.isNull()) { return end(null, file); }
 
-    svgObjects[file.stem] = file.contents.toString('base64');
-
     listening.then(listener => {
-      captureImages(file.stem, listener.address().port)
+      captureImages(file.contents.toString('base64'), listener.address().port)
       .then(pngBuffer => {
         file.contents = pngBuffer;
         file.dirname = `${file.dirname}/fallback-png`;
