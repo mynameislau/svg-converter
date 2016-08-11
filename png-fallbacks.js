@@ -4,7 +4,6 @@ const nightmare = require('nightmare');
 const express = require('express');
 const fs = require('fs');
 const handlebars = require('handlebars');
-const path = require('path');
 const through = require('through2');
 
 const app = express();
@@ -24,91 +23,101 @@ const listening = new Promise((resolve, reject) => {
 })
 .catch(error => console.error(error));
 
-const nightmareInst = nightmare();
+const captureImages = (nightmareInst, imgData, imgID) => {
+  return nightmareInst.evaluate((browserDataIMG, browserIMGID) => {
+    const img = window.document.createElement('img');
+    const imgElement = window.document.body.appendChild(img);
 
-const nightmareWaitOver = Promise.all([listening, templateRead])
-.then(([listener]) => new Promise((resolve, reject) => {
-  const port = listener.address().port;
+    imgElement.setAttribute('data-loaded', 'false');
+    imgElement.setAttribute('id', browserIMGID);
+    imgElement.addEventListener('load', () => {
+      imgElement.setAttribute('data-loaded', 'true');
+    });
 
-  const wait = nightmareInst.goto(`http://localhost:${port}/`)
-  .viewport(1000, 1000) // TODO
-  .wait()
-  .then(() => {
-    resolve();
-  });
-}));
+    imgElement.setAttribute('src', `data:image/svg+xml;base64,${browserDataIMG}`);
 
-const captureImages = (imgData) => {
+    return imgElement.getAttribute('data-path');
+  }, imgData, imgID)
+  .wait(`#${imgID}[data-loaded="true"]`)
+  .evaluate((browserIMGID) => {
+    const cumulativeOffset = element => {
+      let top = 0;
+      let left = 0;
 
-  return nightmareWaitOver.then(() => {
-
-    return nightmareInst.evaluate(browserDataIMG => {
-      const imgElement = window.document.querySelector('img');
-
-      imgElement.addEventListener('load', () => {
-        imgElement.setAttribute('data-loaded', true);
-      });
-
-      imgElement.setAttribute('src', `data:image/svg+xml;base64,${browserDataIMG}`);
-    }, imgData)
-    .wait('[data-loaded]')
-    .evaluate(() => {
-      const cumulativeOffset = element => {
-        let top = 0;
-        let left = 0;
-
-        do {
-          top += element.offsetTop || 0;
-          left += element.offsetLeft || 0;
-          element = element.offsetParent;
-        } while (element);
-
-        return {
-          top: top,
-          left: left
-        };
-      };
-
-      const imgElement = window.document.querySelector('img');
-      const offset = cumulativeOffset(imgElement);
+      do {
+        top += element.offsetTop || 0;
+        left += element.offsetLeft || 0;
+        element = element.offsetParent;
+      } while (element);
 
       return {
-        size: {
-          x: offset.left,
-          y: offset.top,
-          width: imgElement.offsetWidth,
-          height: imgElement.offsetHeight
-        }
+        top: top,
+        left: left
       };
-    });
-  })
-  .then(image => {
-    return nightmareInst.screenshot(image.size);
-  })
-  .catch(error => console.error('errororoo' + error));
-};
+    };
 
-const svgObjects = {};
+    const imgElement = window.document.getElementById(browserIMGID);
+    const offset = cumulativeOffset(imgElement);
+
+    return {
+      size: {
+        x: offset.left,
+        y: offset.top,
+        width: imgElement.offsetWidth,
+        height: imgElement.offsetHeight
+      }
+    };
+  }, imgID)
+  .then(image => {
+    return nightmareInst.screenshot(image.size)
+    .then(screen => {
+      return nightmareInst.evaluate((browserIMGID) => {
+        const imgElement = window.document.getElementById(browserIMGID);
+
+        return imgElement.parentElement.removeChild(imgElement);
+      }, imgID)
+      .then(() => {
+        return screen;
+      });
+    })
+    .catch(error => console.error(error));
+  })
+  .catch(error => console.error(error));
+};
 
 Promise.all([templateRead, listening])
 .then(([template]) => {
   app.get('/', (req, res) => {
-    const reqName = req.params.svg_name;
-    const svgData = svgObjects[reqName];
     const rendered = handlebars.compile(template)({
-      svgData: svgData
     });
 
     res.send(rendered);
   });
 });
 
+let id = 0;
+
 module.exports = () => {
+  const nightmareInst = nightmare();
+
+  const nightmareWaitOver = Promise.all([listening, templateRead])
+  .then(([listener]) => new Promise((resolve, reject) => {
+    const port = listener.address().port;
+
+    nightmareInst.goto(`http://localhost:${port}/`)
+    .viewport(1000, 1000) // TODO
+    .wait()
+    .then(() => {
+      resolve();
+    });
+  }));
+
   return through.obj((file, enc, end) => {
     if (file.isNull()) { return end(null, file); }
 
-    listening.then(listener => {
-      captureImages(file.contents.toString('base64'), listener.address().port)
+    Promise.all([listening, nightmareWaitOver]).then(([listener]) => {
+      id = id + 1;
+      captureImages(nightmareInst, file.contents.toString('base64'), `img-${id}`, listener.address().port)
       .then(pngBuffer => {
         file.contents = pngBuffer;
         file.dirname = `${file.dirname}/fallback-png`;
@@ -119,5 +128,7 @@ module.exports = () => {
     });
 
     return null;
+  }, () => {
+    nightmareInst.end();
   });
 };
