@@ -8,6 +8,9 @@ const through = require('through2');
 
 const app = express();
 
+const getLogger = (verbose = false) =>
+  (verbose ? console.log : () => { return; });
+
 const templateRead = new Promise((resolve, reject) => {
   fs.readFile(`${__dirname}/template.hbs`, (err, data) => {
     if (err) { reject(err); }
@@ -97,7 +100,9 @@ Promise.all([templateRead, listening])
 
 let id = 0;
 
-module.exports = () => {
+module.exports = (opts) => {
+  const log = getLogger(opts.debug);
+  log('ok');
   const nightmareInst = nightmare();
 
   const nightmareWaitOver = Promise.all([listening, templateRead])
@@ -117,6 +122,7 @@ module.exports = () => {
 
     Promise.all([listening, nightmareWaitOver]).then(([listener]) => {
       id = id + 1;
+      log('processing chunk :', id, file.basename);
       captureImages(nightmareInst, file.contents.toString('base64'), `img-${id}`, listener.address().port)
       .then(pngBuffer => {
         file.contents = pngBuffer;
@@ -128,7 +134,9 @@ module.exports = () => {
     });
 
     return null;
-  }, () => {
+  }, (end) => {
+    log('flushing');
     nightmareInst.end();
+    end();
   });
 };

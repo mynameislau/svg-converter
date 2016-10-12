@@ -24,10 +24,15 @@ const generateFallbacks = () => {
 
   const allFoldersFallbacks = conf.paths.map(path => new Promise((resolve, reject) => {
     gulp.src(`./${path.src}/**/*.svg`)
-    .pipe(pngFallback())
+    .pipe(pngFallback({
+      debug: true
+    }))
     .on('error', error => reject(error))
-    .on('end', () => resolve())
-    .pipe(gulp.dest(`./${path.dest}`));
+    .pipe(gulp.dest(`./${path.dest}`))
+    .on('end', () => {
+      resolve();
+      console.log('fini');
+    });
   }));
 
   return Promise.all(allFoldersFallbacks);
