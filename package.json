@@ -1,6 +1,6 @@
 {
   "name": "png-fallbacks",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Gulp plugin that converts svgs to pngs.",
   "main": "png-fallbacks.js",
   "scripts": {
